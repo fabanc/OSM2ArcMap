@@ -613,6 +613,12 @@ def process(osm_file, output_geodatabase, temporary_file):
             unique=True)
 
         arcpy.AddIndex_management(
+            way_line_geom_feature_class,
+            [NODE_ID_FIELD.name],
+            index_name='{}_idx'.format(NODE_ID_FIELD.name),
+            unique=True)
+
+        arcpy.AddIndex_management(
             way_polygon_geom_feature_class,
             [NODE_ID_FIELD.name],
             index_name='{}_idx'.format(NODE_ID_FIELD.name),

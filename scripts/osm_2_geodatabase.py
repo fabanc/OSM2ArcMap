@@ -290,7 +290,8 @@ def import_osm(osm_file, output_geodatabase, nodes_feature_class, csv_nodes_path
                                                         else:
                                                             attrib_values.append(None)
 
-                                                    insert_way_line_cursor.insertRow(attrib_values)
+                                                    if len(tag_dict) > 0:
+                                                        insert_way_line_cursor.insertRow(attrib_values)
                                                     empty_coordinates = ['' for node in nodes]
 
                                                     is_highway = 'n'

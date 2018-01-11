@@ -556,6 +556,10 @@ def join_way_attribute(geometry_feature_class, attribute_table, output_feature_c
         arcpy.Delete_management(feature_class_layer)
 
 
+@timeit
+def append_polygons(source, destination):
+    arcpy.Append_management(source, destination)
+
 ###################################
 # MAIN CALLING FUNCTION
 ###################################
@@ -645,10 +649,11 @@ def process(osm_file, output_geodatabase, temporary_file):
             csv_built_areas
         )
 
+        output_polygon_feature_class = os.path.join(output_geodatabase, 'way_polygons_final')
         join_way_attribute(
             way_polygon_geom_feature_class,
             way_attr_table,
-            os.path.join(output_geodatabase, 'way_polygons_final')
+            output_polygon_feature_class
         )
 
         # Load the multipolygon
@@ -659,7 +664,7 @@ def process(osm_file, output_geodatabase, temporary_file):
         )
 
         # TODO Transfer multipolygons to polygon feature class
-
+        append_polygons(multipolygon_feature_class, output_polygon_feature_class)
 
         # TODO Clean up temporary files
 

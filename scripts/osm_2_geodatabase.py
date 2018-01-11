@@ -18,8 +18,6 @@ STANDARD_FIELDS = set(('highway','name','name_en','ref','lanes','surface','onewa
 STANDARD_FIELDS_ARRAY = list(STANDARD_FIELDS)
 RELATION_FIELD_ARRAY = ['type'] + STANDARD_FIELDS_ARRAY
 
-# arcgis_row_definition = namedtuple('ArcGISRow', ['type', 'Length', ])
-
 NODE_ID_FIELD = arcpy.Field()
 NODE_ID_FIELD.name = 'id'
 NODE_ID_FIELD.type = 'String'
@@ -435,8 +433,6 @@ def build_lines(line_feature_class, build_ways_path):
                 for row in csv_reader:
                     geometry_txt = row[1].split(IDENTIFIER_DELIMITER)
                     geometries = [g.split(' ') for g in geometry_txt]
-                    # points_array = [arcpy.Point(float(geom[0]), float(geom[1])) for geom in geometries]
-                    # insert_cursor.insertRow((row[0], arcpy.Polyline(arcpy.Array(points_array))))
                     point_array = []
                     for geom in geometries:
                         point_array.append((float(geom[0]), float(geom[1])))
@@ -512,32 +508,8 @@ def load_multipolygon_relations(multipolygons, multipolygon_member_temp_file, wa
 
 
 @timeit
-def copy_polygon_to_feature_class(ways, polygons):
-    fields = [f.name for f in WAY_SAVED_ATTRIBUTES] + STANDARD_FIELDS_ARRAY + ['SHAPE@']
-    # arcpy.AddMessage('Fields: {}'.format(fields))
-    where_clause = 'is_closed = \'{0}\' AND has_attributes = \'{0}\' AND highway IS NULL'.format(BOOLEAN_YES)
-    # is_closed = 'YES' AND has_attributes = 'YES' AND highway <> ''
-    # arcpy.AddMessage(where_clause)
-
-    count = 0
-    time_start = time.time()
-    with arcpy.da.InsertCursor(polygons, fields) as polygon_insert_cursor:
-        with arcpy.da.SearchCursor(ways, fields, where_clause) as ways_search_cursor:
-            for way_row in ways_search_cursor:
-                if count % 10000 == 0:
-                    time_end = time.time()
-                    arcpy.AddMessage('Exported {} polygons in {}'.format(count, time_end - time_start))
-                    time_start = time_end
-                new_row = [value for value in way_row]
-                new_row[-1] = arcpy.Polygon(way_row[-1].getPart(0), COORDINATES_SYSTEM)
-                count += 1
-
-                polygon_insert_cursor.insertRow(new_row)
-
-@timeit
 def join_way_attribute(geometry_feature_class, attribute_table, output_feature_class):
 
-    # feature_class_name = arcpy.Describe(geometry_feature_class).name
     # Make a feature class layer
     feature_class_layer = 'v_feature_class'
     arcpy.MakeFeatureLayer_management(geometry_feature_class, feature_class_layer)
@@ -583,45 +555,6 @@ def join_way_attribute(geometry_feature_class, attribute_table, output_feature_c
     finally:
         arcpy.Delete_management(feature_class_layer)
 
-# def copy_polygon_to_feature_class(ways, polygons):
-#     fields = [f.name for f in WAY_SAVED_ATTRIBUTES] + STANDARD_FIELDS_ARRAY + ['SHAPE@']
-#     # arcpy.AddMessage('Fields: {}'.format(fields))
-#     where_clause = 'is_closed = \'{0}\' AND has_attributes = \'{0}\' AND highway IS NULL'.format(BOOLEAN_YES)
-#     layer_polygons = 'v_ways_polygons'
-#     field_info = arcpy.FieldInfo()
-#     for field in arcpy.ListFields():
-#         visible = 'VISIBLE'
-#         if field.name in ['is_closed', 'has_attributes']:
-#             visible = 'HIDDEN'
-#         field_info.addField(field.name, field.name, visible, 'NONE')
-#
-#     arcpy.MakeFeatureLayer_management()
-#
-#     # is_closed = 'YES' AND has_attributes = 'YES' AND highway <> ''
-#     # arcpy.AddMessage(where_clause)
-#     with arcpy.da.InsertCursor(polygons, fields) as polygon_insert_cursor:
-#         with arcpy.da.SearchCursor(ways, fields, where_clause) as ways_search_cursor:
-#             for way_row in ways_search_cursor:
-#                 new_row = [value for value in way_row]
-#                 new_row[-1] = arcpy.Polygon(way_row[-1].getPart(0), COORDINATES_SYSTEM)
-#
-#                 polygon_insert_cursor.insertRow(tuple(new_row))
-
-
-@timeit
-def copy_lines_to_feature_class(temp_ways, ways):
-    v_layers = 'v_ways'
-    where_clause = 'NOT (is_closed = \'{0}\' AND has_attributes = \'{0}\' AND highway IS NULL)'.format(BOOLEAN_YES)
-    field_infos = arcpy.FieldInfo()
-    for field in arcpy.ListFields(temp_ways):
-        visible = 'VISIBLE'
-        if field.name.lower() in ['is_closed', 'has_attributes']:
-            visible = 'HIDDEN'
-        field_infos.addField(field.name, field.name, visible, 'NONE')
-
-    arcpy.MakeFeatureLayer_management(temp_ways, v_layers, where_clause, field_info=field_infos)
-    arcpy.CopyFeatures_management(v_layers, ways)
-    # arcpy.Delete_management(temp_ways)
 
 ###################################
 # MAIN CALLING FUNCTION
@@ -638,7 +571,6 @@ def process(osm_file, output_geodatabase, temporary_file):
     way_polygon_geom_feature_class = create_way_polygon_geom_feature_class(output_geodatabase, 'ways_polygon_geom')
 
     way_attr_table = create_way_table(output_geodatabase, 'temp_ways', additional_fields)
-    way_nodes_table_lines = create_way_nodes(output_geodatabase, 'way_nodes')
     relations_table = create_relations_table(output_geodatabase, 'relations', additional_fields_relations)
     relations_members = create_relations_member(output_geodatabase, 'relations_members')
 
@@ -726,14 +658,10 @@ def process(osm_file, output_geodatabase, temporary_file):
             way_polygon_geom_feature_class
         )
 
-        #
-        # copy_polygon_to_feature_class(way_feature_class, multipolygon_feature_class)
-        #
-        # output_ways = os.path.join(output_geodatabase, 'ways')
-        # arcpy.AddMessage(output_ways)
-        # copy_lines_to_feature_class(way_feature_class, output_ways)
+        # TODO Transfer multipolygons to polygon feature class
 
 
+        # TODO Clean up temporary files
 
 
 if __name__ == '__main__':

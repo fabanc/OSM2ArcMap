@@ -565,6 +565,8 @@ def append_polygons(source, destination):
 # MAIN CALLING FUNCTION
 ###################################
 def process(osm_file, output_geodatabase, temporary_file):
+
+
     create_output_workspace(output_geodatabase)
 
     additional_fields = get_fields_numpy_definition(STANDARD_FIELDS_ARRAY)
@@ -583,6 +585,15 @@ def process(osm_file, output_geodatabase, temporary_file):
     csv_way_nodes = os.path.join(temporary_file, CSV_WAY_NODES)
     csv_built_ways = os.path.join(temporary_file, 'built_ways.csv')
     csv_built_areas = os.path.join(temporary_file, 'built_areas.csv')
+
+    csv_to_remove = [csv_nodes, csv_way_nodes, csv_built_ways, csv_built_areas]
+
+    feature_class_to_remove = [
+        way_line_geom_feature_class,
+        way_polygon_geom_feature_class,
+        multipolygon_feature_class,
+        way_attr_table
+    ]
 
     with tempfile.TemporaryFile() as multipolygon_temporary_file:
         # Parse the XML file
@@ -674,7 +685,13 @@ def process(osm_file, output_geodatabase, temporary_file):
         append_polygons(multipolygon_feature_class, output_polygon_feature_class)
 
         # TODO Clean up temporary files
+        for csv_path in csv_to_remove:
+            if os.path.isfile(csv_path):
+                os.remove(csv_path)
 
+        for fc in feature_class_to_remove:
+            if arcpy.Exists(fc):
+                arcpy.Delete_management(fc)
 
 if __name__ == '__main__':
     # osm_file = r'D:\Temp\Custom OSM Parser\monaco-latest.osm.bz2'

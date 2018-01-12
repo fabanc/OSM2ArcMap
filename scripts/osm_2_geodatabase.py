@@ -356,23 +356,57 @@ def build_ways(csv_nodes_path, csv_way_nodes, csv_built_ways, csv_built_areas, n
     nodes_read = 0
     arcpy.AddMessage('Building ways')
     node_dict = {}
+
+    count_remaining_ways = 0
+    count_built_ways = 0
+    count_built_areas = 0
+
     with open(csv_nodes_path, 'rb') as csv_nodes:
         nodes_reader = csv.reader(csv_nodes, delimiter=CSV_DELIMITER)
         for node_row in nodes_reader:
             if nodes_read % nodes_chunk_size == 0 and nodes_read > 1:
-                arcpy.AddMessage('New node chunk: {} nodes read'.format(nodes_read))
+                arcpy.AddMessage('{} nodes read'.format(nodes_read))
                 # Call function to process chunk
-                process_way_chunk(node_dict, csv_way_nodes, csv_built_ways, csv_built_areas)
+                remaining_ways, built_ways, built_areas = process_way_chunk(
+                    node_dict,
+                    csv_way_nodes,
+                    csv_built_ways,
+                    csv_built_areas
+                )
+                count_remaining_ways = count_remaining_ways
+                count_built_ways += built_ways
+                count_built_areas += built_areas
+
                 node_dict.clear()
             node_dict[node_row[0]] = [float(node_row[1]), float(node_row[2])]
             nodes_read += 1
 
     # Call function to process chunk
     if len(node_dict) > 0:
-        process_way_chunk(node_dict, csv_way_nodes, csv_built_ways, csv_built_areas)
+        arcpy.AddMessage('{} nodes read'.format(nodes_read))
+        remaining_ways, built_ways, built_areas = process_way_chunk(
+            node_dict,
+            csv_way_nodes,
+            csv_built_ways,
+            csv_built_areas
+        )
+        count_remaining_ways = remaining_ways
+        count_built_ways += built_ways
+        count_built_areas += built_areas
+
+    if count_remaining_ways > 0:
+        arcpy.AddWarning(
+            '{} ways have been left unprocessed. This indicates that the nodes for those ways could not be found.'.format(
+                count_remaining_ways
+            ))
+
+    arcpy.AddMessage('Total built lines: {}, Total built areas: {}'.format(count_built_ways, count_built_areas))
 
 
 def process_way_chunk(nodes_dict, csv_way_nodes, csv_built_ways, csv_built_areas):
+    count_remaining_ways = 0
+    count_built_ways = 0
+    count_built_areas = 0
     csv_way_nodes_temp = csv_way_nodes + '_temp'
     with open(csv_way_nodes, 'rb') as csv_way_nodes_file:
         with open(csv_way_nodes_temp, 'wb') as csv_way_nodes_file_temp:
@@ -405,10 +439,13 @@ def process_way_chunk(nodes_dict, csv_way_nodes, csv_built_ways, csv_built_areas
                                 IDENTIFIER_DELIMITER.join(coordinates)
                             ]
                             if nodes[-1] == nodes[0] and is_linear == 'n':
+                                count_built_areas += 1
                                 build_areas_writer.writerow(csv_array)
                             else:
+                                count_built_ways += 1
                                 build_way_writer.writerow(csv_array)
                         else:
+                            count_remaining_ways += 1
                             csv_array = [
                                 id,
                                 IDENTIFIER_DELIMITER.join(nodes),
@@ -420,6 +457,14 @@ def process_way_chunk(nodes_dict, csv_way_nodes, csv_built_ways, csv_built_areas
 
     os.remove(csv_way_nodes)
     os.rename(csv_way_nodes_temp, csv_way_nodes)
+
+    arcpy.AddMessage('Statistics for node chunk: {} remaining ways to build, {} built lines, {} built areas'.format(
+        count_remaining_ways,
+        count_built_ways,
+        count_built_areas
+    ))
+
+    return count_remaining_ways, count_built_ways, count_built_areas
 
 
 @timeit
@@ -669,7 +714,6 @@ def process(osm_file, output_geodatabase, processing_folder, nodes_chunk_size=50
             csv_built_areas
         )
 
-
         join_way_attribute(
             way_polygon_geom_feature_class,
             way_attr_table,
@@ -683,10 +727,8 @@ def process(osm_file, output_geodatabase, processing_folder, nodes_chunk_size=50
             way_polygon_geom_feature_class
         )
 
-        # TODO Transfer multipolygons to polygon feature class
         append_polygons(multipolygon_feature_class, output_polygon_feature_class)
 
-        # TODO Clean up temporary files
         for csv_path in csv_to_remove:
             if os.path.isfile(csv_path):
                 os.remove(csv_path)

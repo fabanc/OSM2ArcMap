@@ -1,6 +1,6 @@
 # "D:\Temp\Custom OSM Parser\luxembourg-latest.osm.bz2" "D:\Temp\Custom OSM Parser\luxembourg-latest.gdb"
 # "D:\Temp\Custom OSM Parser\monaco-latest.osm.bz2" "D:\Temp\Custom OSM Parser\monaco-latest.gdb"
-import os, time, bz2, tempfile, time, csv, itertools
+import os, time, bz2, tempfile, time, csv, itertools, datetime
 
 # import xml.etree.ElementTree as etree
 from lxml import etree
@@ -8,12 +8,15 @@ import arcpy, numpy
 
 arcpy.env.overwriteOutput = True
 
-STANDARD_FIELDS = set(('highway','name','name_en','ref','lanes','surface','oneway','maxspeed','tracktype','access','service','foot','bicycle','bridge','barrier','lit','layer',
-                      'building','building_levels','building_height','addr_housenumber','addr_street','addr_city','addr_postcode','addr_country','addr_place','addr_state',
-                      'natural','landuse','waterway','power','amenity','place','height','note','railway','public_transport','operator','guage','width','tunnel',
-                    'leisure','is_in','ele','shop','man_made','parking',
-                    'boundary','aerialway','aeroway','craft','emergency','geological','historic','military','office',
-                    'sport','tourism','traffic_calming','entrance','crossing'))
+STANDARD_FIELDS = set((
+    'highway', 'name', 'name_en', 'ref', 'lanes', 'surface', 'oneway', 'maxspeed', 'tracktype', 'access', 'service',
+    'foot', 'bicycle', 'bridge', 'barrier', 'lit', 'layer', 'building', 'building_levels', 'building_height',
+    'addr_housenumber', 'addr_street', 'addr_city', 'addr_postcode', 'addr_country', 'addr_place', 'addr_state',
+    'natural', 'landuse', 'waterway', 'power', 'amenity', 'place', 'height', 'note', 'railway', 'public_transport',
+    'operator', 'guage', 'width', 'tunnel', 'leisure', 'is_in', 'ele', 'shop', 'man_made', 'parking', 'boundary',
+    'aerialway', 'aeroway', 'craft', 'emergency', 'geological', 'historic', 'military', 'office', 'sport', 'tourism',
+    'traffic_calming', 'entrance', 'crossing'
+))
 
 STANDARD_FIELDS_ARRAY = list(STANDARD_FIELDS)
 
@@ -65,16 +68,22 @@ def timeit(method):
     :return:
     """
     def timed(*args, **kw):
-        ts = time.time()
+        ts = datetime.datetime.now().replace(microsecond=0)
         result = method(*args, **kw)
-        te = time.time()
-        arcpy.AddMessage('Method {} executed in {} seconds'.format(method.__name__, te - ts))
+        te = datetime.datetime.now().replace(microsecond=0)
+        arcpy.AddMessage('Method {} executed in {} (hours:minutes:seconds)'.format(method.__name__, te - ts))
         return result
 
     return timed
 
 
 def get_fields_numpy_definition(field_list):
+    """
+    Make a numpy array that can be used to add attribute to a table or feature class.
+    All fields are created as text fields with a length of 255.
+    :param field_list: An iterable collection of field names. Field names must occur once.
+    :return: the numpy array.
+    """
     standard_fields_array_tuple = [('_ID', numpy.int)]
     for f in field_list:
         standard_fields_array_tuple.append((f, '|S255'))
@@ -84,9 +93,16 @@ def get_fields_numpy_definition(field_list):
         numpy.dtype(standard_fields_array_tuple)
     )
 
+
 def create_output_workspace(workspace):
+    """
+    Create an output file geodatabase if it does not already exist.
+    :param workspace: The workspace to create.
+    :return:
+    """
+    split_path = os.path.split(workspace)
     if not arcpy.Exists(workspace):
-        workspace = arcpy.CreateFileGDB_management(os.path.split(workspace)[0], os.path.split(workspace)[1])
+        arcpy.CreateFileGDB_management(split_path[0], split_path[1])
 
 
 ###################################
@@ -157,6 +173,7 @@ def create_way_polygon_geom_feature_class(workspace, feature_class_name):
     arcpy.AddField_management(way_tag_feature_class, ID_FIELD.name, 'STRING', "#", "#", ID_FIELD.length)
     return way_tag_feature_class
 
+
 @timeit
 def create_way_table(workspace, table_name, standard_fields):
     way_tag_table = os.path.join(workspace, table_name)
@@ -210,8 +227,10 @@ def import_osm(osm_file, output_geodatabase, nodes_feature_class, csv_nodes_path
     way_tags_all_attr = way_base_attr + STANDARD_FIELDS_ARRAY
 
     count_nodes = 0
+    count_nodes_with_attributes = 0
+    count_ways = 0
     count_ways_with_attributes = 0
-    count_ways_without_attributes = 0
+    count_multipolygons = 0
 
     # Edit session is required to edit multiple feature class at a time within the same workspace
     with arcpy.da.Editor(output_geodatabase) as edit:
@@ -219,9 +238,8 @@ def import_osm(osm_file, output_geodatabase, nodes_feature_class, csv_nodes_path
             with open(csv_nodes_path, 'wb') as csv_nodes_file:
                 with arcpy.da.InsertCursor(way_feature_class, way_tags_all_attr) as insert_way_line_cursor:
                     with open(csv_way_nodes, 'wb') as csv_way_nodes_file:
-                        with arcpy.da.InsertCursor(multipolygon_feature_class, way_tags_all_attr) as multipolygon_geom_cursor:
+                        with arcpy.da.InsertCursor(multipolygon_feature_class, way_tags_all_attr) as multipolygon_cursor:
                             csv_nodes_file_writer = csv.writer(csv_nodes_file, delimiter=CSV_DELIMITER)
-                            arcpy.AddMessage('CSV node ways file: {}'.format(csv_way_nodes_file))
                             way_nodes_writer = csv.writer(csv_way_nodes_file, delimiter=CSV_DELIMITER)
 
                             for event, elem in etree.iterparse(osm_file):
@@ -239,12 +257,15 @@ def import_osm(osm_file, output_geodatabase, nodes_feature_class, csv_nodes_path
                                                 attrib_values.append(None)
 
                                         insert_nodes_cursor.insertRow(attrib_values)
-                                    # nodes_dict[elem.attrib['id']] = point_geom
+                                        count_nodes_with_attributes += 1
+
                                     csv_nodes_file_writer.writerow([
                                         elem.attrib['id'],
                                         elem.attrib['lon'],
                                         elem.attrib['lat']]
                                     )
+
+                                    count_nodes += 1
                                     elem.clear()
 
                                 elif elem.tag == 'way':
@@ -264,12 +285,15 @@ def import_osm(osm_file, output_geodatabase, nodes_feature_class, csv_nodes_path
                                                 attrib_values.append(None)
 
                                         if len(tag_dict) > 0:
+                                            count_ways_with_attributes += 1
                                             insert_way_line_cursor.insertRow(attrib_values)
                                         empty_coordinates = ['' for node in nodes]
 
                                         is_highway = 'n'
                                         if 'highway' in tag_dict and tag_dict['highway'] != '':
                                             is_highway = 'y'
+
+                                        count_ways += 1
                                         way_nodes_writer.writerow([
                                             elem.attrib['id'],
                                             IDENTIFIER_DELIMITER.join(nodes),
@@ -302,15 +326,25 @@ def import_osm(osm_file, output_geodatabase, nodes_feature_class, csv_nodes_path
 
                                     if 'type' in tag_dict:
                                         if tag_dict['type'] == 'multipolygon':
-                                            multipolygon_geom_cursor.insertRow(attrib_values)
+                                            count_multipolygons += 1
+                                            multipolygon_cursor.insertRow(attrib_values)
                                             multipolygon_temporary_file.write(
                                                 '{}|{}\n'.format(elem.attrib[ID_FIELD.name], ','.join(members_id))
                                             )
                                     elem.clear()
 
-            arcpy.AddMessage('Ways with attributes: {}, Ways with no attributes: {}'.format(
-                count_ways_with_attributes,
-                count_ways_without_attributes
+            arcpy.AddMessage('Imported {} nodes. {} nodes have attributes.'.format(
+                count_nodes,
+                count_nodes_with_attributes
+            ))
+
+            arcpy.AddMessage('Imported {} ways. {} have attributes.'.format(
+                count_ways,
+                count_ways_with_attributes
+            ))
+
+            arcpy.AddMessage('Derived {} multipolygons from the relations.'.format(
+                count_multipolygons
             ))
 
 

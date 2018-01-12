@@ -100,6 +100,7 @@ def parse_node_children(elem):
         child.clear()
     return tag_dict
 
+
 def parse_way_children(elem):
     tag_dict = {}
     nodes = []
@@ -110,6 +111,7 @@ def parse_way_children(elem):
             nodes.append(child.attrib['ref'])
         child.clear()
     return tag_dict, nodes
+
 
 def parse_relation_children(elem):
     tag_dict = {}
@@ -129,12 +131,6 @@ def parse_relation_children(elem):
 # FUNCTIONS TO CREATE FEATURE CLASS
 ###################################
 
-# def create_relation_attributes(workspace, feature_class_name, standard_fields):
-#     attribute_table = os.path.join(workspace, feature_class_name)
-#     arcpy.CreateTable_management(workspace, table_name)
-#     for field in WAY_SAVED_ATTRIBUTES:
-#         arcpy.AddField_management(way_tag_table, field.name, field.type, "#", "#", field.length)
-#     arcpy.da.ExtendTable(way_tag_table, "OID@", standard_fields, "_ID")
 
 @timeit
 def create_node_feature_class(workspace, feature_class_name, standard_fields):
@@ -165,13 +161,9 @@ def create_way_polygon_geom_feature_class(workspace, feature_class_name):
 def create_way_table(workspace, table_name, standard_fields):
     way_tag_table = os.path.join(workspace, table_name)
     arcpy.CreateTable_management(workspace, table_name)
-    # arcpy.CreateFeatureclass_management(workspace, table_name, "POLYLINE", "#", "DISABLED", "DISABLED",
-    #                                     COORDINATES_SYSTEM)
     for field in WAY_SAVED_ATTRIBUTES:
         arcpy.AddField_management(way_tag_table, field.name, field.type, "#", "#", field.length)
     arcpy.da.ExtendTable(way_tag_table, "OID@", standard_fields, "_ID")
-    # arcpy.AddField_management(way_tag_table, 'has_attributes', 'STRING', "#", "#", 3)
-    # arcpy.AddField_management(way_tag_table, 'is_closed', 'STRING', "#", "#", 3)
     return way_tag_table
 
 
@@ -193,16 +185,6 @@ def create_multipolygon_table(workspace, feature_class_name, standard_fields):
         arcpy.AddField_management(multipolygon_feature_class, field.name, field.type, "#", "#", field.length)
     arcpy.da.ExtendTable(multipolygon_feature_class, "OID@", standard_fields, "_ID")
     return multipolygon_feature_class
-
-
-@timeit
-def create_relations_table(workspace, table_name, standard_fields):
-    relations_table = os.path.join(workspace, table_name)
-    arcpy.CreateTable_management(workspace, table_name)
-    for field in WAY_SAVED_ATTRIBUTES:
-        arcpy.AddField_management(relations_table, field.name, field.type, "#", "#", field.length)
-    arcpy.da.ExtendTable(relations_table, "OID@", standard_fields, "_ID")
-    return relations_table
 
 
 @timeit
@@ -332,7 +314,6 @@ def import_osm(osm_file, output_geodatabase, nodes_feature_class, csv_nodes_path
             ))
 
 
-
 ###################################
 # FUNCTIONS TO BUILD LINES
 ###################################
@@ -432,6 +413,7 @@ def build_lines(line_feature_class, build_ways_path):
 
     arcpy.AddMessage('Inserted {} line geometries'.format(count))
 
+
 @timeit
 def build_polygons(polygon_feature_class, built_areas_path):
     """
@@ -457,6 +439,7 @@ def build_polygons(polygon_feature_class, built_areas_path):
                     count += 1
     arcpy.AddMessage('Inserted {} polygon geometries'.format(count))
 
+
 @timeit
 def load_multipolygon_relations(multipolygons, multipolygon_member_temp_file, ways):
     multipolygon_member_temp_file.seek(0)
@@ -478,16 +461,13 @@ def load_multipolygon_relations(multipolygons, multipolygon_member_temp_file, wa
                 ID_FIELD.name,
                 '\',\''.join(member_identifiers)
             )
-            # arcpy.AddMessage(where_clause)
+
             shape = arcpy.Array()
-            test = []
             shape_added = 0
             with arcpy.da.SearchCursor(ways, [ID_FIELD.name, 'SHAPE@'], where_clause=where_clause) as ways_search_cursor:
                 for way_row in ways_search_cursor:
                     if way_row[1] is not None:
-                        # part = way_row[1][0]
                         for part in way_row[1]:
-                            # test.append([[p.X, p.Y] for p in part])
                             shape.add(part)
                             shape_added += 1
 
@@ -516,7 +496,7 @@ def join_way_attribute(geometry_feature_class, attribute_table, output_feature_c
 
         table_base_name = arcpy.Describe(attribute_table).name
 
-        fieldMappings = arcpy.FieldMappings()
+        field_mappings = arcpy.FieldMappings()
         fields = arcpy.ListFields(feature_class_layer)
         for f in fields:
             alias_name = f.aliasName
@@ -531,17 +511,17 @@ def join_way_attribute(geometry_feature_class, attribute_table, output_feature_c
                     output_field.name = field_name
                     output_field.aliasName = field_name
                     field_map.outputField = output_field
-                    fieldMappings.addFieldMap(field_map)
+                    field_mappings.addFieldMap(field_map)
 
         arcpy.FeatureClassToFeatureClass_conversion(
             feature_class_layer,
             os.path.dirname(output_feature_class),
             os.path.basename(output_feature_class),
-            field_mapping=fieldMappings
+            field_mapping=field_mappings
         )
         arcpy.RemoveJoin_management(feature_class_layer)
 
-    except Exception as e:
+    except Exception:
         raise
     finally:
         arcpy.Delete_management(feature_class_layer)
@@ -558,7 +538,7 @@ def process(osm_file, output_geodatabase, processing_folder, nodes_chunk_size=50
     :param osm_file: The osm file, compressed as bz2
     :param output_geodatabase: The output geodatabase.
     :param processing_folder: The processing folder. This is where temporary files will be created.
-    :param blocksize: The number of nodes loaded in memory at once when loading nodes.
+    :param nodes_chunk_size: The number of nodes loaded in memory at once when loading nodes.
     :return:
     """
 
@@ -685,6 +665,6 @@ def process(osm_file, output_geodatabase, processing_folder, nodes_chunk_size=50
 if __name__ == '__main__':
     # osm_file = r'D:\Temp\Custom OSM Parser\monaco-latest.osm.bz2'
     # output_geodatabase = r'D:\Temp\Custom OSM Parser\monaco-latest.gdb'
-    osm_file = arcpy.GetParameterAsText(0)
+    input_osm_file = arcpy.GetParameterAsText(0)
     output_geodatabase = arcpy.GetParameterAsText(1)
-    process(osm_file, output_geodatabase, r'D:\Temp\Custom OSM Parser', nodes_chunk_size=500000)
+    process(input_osm_file, output_geodatabase, r'D:\Temp\Custom OSM Parser', nodes_chunk_size=500000)

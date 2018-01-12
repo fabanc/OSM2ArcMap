@@ -743,4 +743,6 @@ if __name__ == '__main__':
     # output_geodatabase = r'D:\Temp\Custom OSM Parser\monaco-latest.gdb'
     input_osm_file = arcpy.GetParameterAsText(0)
     output_geodatabase = arcpy.GetParameterAsText(1)
-    process(input_osm_file, output_geodatabase, r'D:\Temp\Custom OSM Parser', nodes_chunk_size=500000)
+    temporary_workspace = arcpy.GetParameterAsText(2)
+    nodes_chunk_size = arcpy.GetParameterAsText(3)
+    process(input_osm_file, output_geodatabase, temporary_workspace, nodes_chunk_size=int(nodes_chunk_size))

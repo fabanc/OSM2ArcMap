@@ -337,16 +337,15 @@ def import_osm(osm_file, output_geodatabase, nodes_feature_class, csv_nodes_path
 # FUNCTIONS TO BUILD LINES
 ###################################
 @timeit
-def build_ways(csv_nodes_path, csv_way_nodes, csv_built_ways, csv_built_areas):
-    nodes_chunk = 500000
+def build_ways(csv_nodes_path, csv_way_nodes, csv_built_ways, csv_built_areas, nodes_chunk_size=500000):
     nodes_read = 0
     arcpy.AddMessage('Building ways')
     node_dict = {}
     with open(csv_nodes_path, 'rb') as csv_nodes:
         nodes_reader = csv.reader(csv_nodes, delimiter=CSV_DELIMITER)
         for node_row in nodes_reader:
-            if nodes_read % nodes_chunk == 0 and nodes_read > 1:
-                arcpy.AddMessage('New node chunk: {}'.format(nodes_read))
+            if nodes_read % nodes_chunk_size == 0 and nodes_read > 1:
+                arcpy.AddMessage('New node chunk: {} nodes read'.format(nodes_read))
                 # Call function to process chunk
                 process_way_chunk(node_dict, csv_way_nodes, csv_built_ways, csv_built_areas)
                 node_dict.clear()
@@ -553,12 +552,13 @@ def append_polygons(source, destination):
     arcpy.Append_management(source, destination)
 
 
-def process(osm_file, output_geodatabase, processing_folder):
+def process(osm_file, output_geodatabase, processing_folder, nodes_chunk_size=500000):
     """
     The main function. Parse the xml and create the required features from it.
     :param osm_file: The osm file, compressed as bz2
     :param output_geodatabase: The output geodatabase.
     :param processing_folder: The processing folder. This is where temporary files will be created.
+    :param blocksize: The number of nodes loaded in memory at once when loading nodes.
     :return:
     """
 
@@ -633,7 +633,8 @@ def process(osm_file, output_geodatabase, processing_folder):
             csv_nodes,
             csv_way_nodes,
             csv_built_ways,
-            csv_built_areas
+            csv_built_areas,
+            nodes_chunk_size
         )
 
         # Build the lines geometries - no attributes
@@ -686,4 +687,4 @@ if __name__ == '__main__':
     # output_geodatabase = r'D:\Temp\Custom OSM Parser\monaco-latest.gdb'
     osm_file = arcpy.GetParameterAsText(0)
     output_geodatabase = arcpy.GetParameterAsText(1)
-    process(osm_file, output_geodatabase, r'D:\Temp\Custom OSM Parser')
+    process(osm_file, output_geodatabase, r'D:\Temp\Custom OSM Parser', nodes_chunk_size=500000)

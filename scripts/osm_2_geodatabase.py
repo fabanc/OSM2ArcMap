@@ -2,6 +2,7 @@
 # "D:\Temp\Custom OSM Parser\monaco-latest.osm.bz2" "D:\Temp\Custom OSM Parser\monaco-latest.gdb"
 import os, time, bz2, tempfile, time, csv, itertools, datetime
 
+# TODO Make a dynamic load of lxml. If fail, use regular xml element tree.
 # import xml.etree.ElementTree as etree
 from lxml import etree
 import arcpy, numpy
@@ -193,6 +194,7 @@ def create_way_nodes(workspace, table_name):
     arcpy.AddField_management(way_nodes_table, 'sequence', ID_FIELD.type, "#", "#", ID_FIELD.length)
     return way_nodes_table
 
+
 @timeit
 def create_multipolygon_table(workspace, feature_class_name, standard_fields):
     multipolygon_feature_class = os.path.join(workspace, feature_class_name)
@@ -378,7 +380,7 @@ def build_ways(csv_nodes_path, csv_way_nodes, csv_built_ways, csv_built_areas, n
                 count_built_areas += built_areas
 
                 node_dict.clear()
-            node_dict[node_row[0]] = [float(node_row[1]), float(node_row[2])]
+            node_dict[node_row[0]] = node_row[1] + ' ' + node_row[2]
             nodes_read += 1
 
     # Call function to process chunk
@@ -409,9 +411,9 @@ def process_way_chunk(nodes_dict, csv_way_nodes, csv_built_ways, csv_built_areas
     count_built_areas = 0
     csv_way_nodes_temp = csv_way_nodes + '_temp'
     with open(csv_way_nodes, 'rb') as csv_way_nodes_file:
-        with open(csv_way_nodes_temp, 'wb') as csv_way_nodes_file_temp:
-            with open(csv_built_ways, 'wb') as csv_built_ways_file:
-                with open(csv_built_areas, 'wb') as csv_built_areas_file:
+        with open(csv_way_nodes_temp, 'a') as csv_way_nodes_file_temp:
+            with open(csv_built_ways, 'a') as csv_built_ways_file:
+                with open(csv_built_areas, 'a') as csv_built_areas_file:
                     reader = csv.reader(csv_way_nodes_file, delimiter=CSV_DELIMITER)
                     writer = csv.writer(csv_way_nodes_file_temp, delimiter=CSV_DELIMITER)
                     build_way_writer = csv.writer(csv_built_ways_file, delimiter=CSV_DELIMITER)
@@ -427,7 +429,7 @@ def process_way_chunk(nodes_dict, csv_way_nodes, csv_built_ways, csv_built_areas
                             node_id = nodes[index]
                             if node_id in nodes_dict:
                                 node = nodes_dict[node_id]
-                                coordinates[index] = '{} {}'.format(node[0], node[1])
+                                coordinates[index] = node
                             else:
                                 coordinate = coordinates[index]
                                 if coordinate is None or coordinate == '':

@@ -224,16 +224,6 @@ def create_way_table(workspace, table_name, standard_fields):
 
 
 @timeit
-def create_way_nodes(workspace, table_name):
-    way_nodes_table = os.path.join(workspace, table_name)
-    arcpy.CreateTable_management(workspace, table_name)
-    arcpy.AddField_management(way_nodes_table, 'way_id', ID_FIELD.type, "#", "#", ID_FIELD.length)
-    arcpy.AddField_management(way_nodes_table, 'node_id', ID_FIELD.type, "#", "#", ID_FIELD.length)
-    arcpy.AddField_management(way_nodes_table, 'sequence', ID_FIELD.type, "#", "#", ID_FIELD.length)
-    return way_nodes_table
-
-
-@timeit
 def create_multipolygon_table(workspace, feature_class_name, standard_fields):
     multipolygon_feature_class = os.path.join(workspace, feature_class_name)
     arcpy.CreateFeatureclass_management(workspace, feature_class_name, "POLYGON", "#", "DISABLED", "DISABLED",

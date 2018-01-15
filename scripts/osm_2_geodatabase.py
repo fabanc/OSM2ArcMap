@@ -1,10 +1,10 @@
-# "D:\Temp\Custom OSM Parser\luxembourg-latest.osm.bz2" "D:\Temp\Custom OSM Parser\luxembourg-latest.gdb"
+# "D:\Temp\Custom OSM Parser\luxembourg-latest.osm.bz2" "D:\Temp\Custom OSM Parser\luxembourg-latest.gdb" "D:\Temp\Custom OSM Parser" 500000
 # "D:\Temp\Custom OSM Parser\monaco-latest.osm.bz2" "D:\Temp\Custom OSM Parser\monaco-latest.gdb"
 import os, time, bz2, tempfile, time, csv, itertools, datetime
 
 # TODO Make a dynamic load of lxml. If fail, use regular xml element tree.
-# import xml.etree.ElementTree as etree
-from lxml import etree
+import xml.etree.ElementTree as etree
+# from lxml import etree
 import arcpy, numpy
 
 arcpy.env.overwriteOutput = True
@@ -133,16 +133,21 @@ def parse_way_children(elem):
 def parse_relation_children(elem):
     tag_dict = {}
     members = []
+    way_members = []
     type = None
     for child in elem:
         if child.tag == 'tag':
             tag_dict[child.attrib['k']] = child.attrib['v']
             if child.attrib['k'] == 'type':
                 type = child.attrib['v']
-        elif child.tag == 'member':
-            members.append(child)
 
-    return tag_dict, members, type
+        elif child.tag == 'member':
+            # members.append(child)
+            if child.attrib['type'] == 'way':
+                way_members.append(child.attrib['ref'])
+
+        child.clear()
+    return tag_dict, members, type, way_members
 
 ###################################
 # FUNCTIONS TO CREATE FEATURE CLASS
@@ -293,98 +298,122 @@ def import_osm(osm_file, output_geodatabase, nodes_feature_class, csv_nodes_path
                             csv_nodes_file_writer = csv.writer(csv_nodes_file, delimiter=CSV_DELIMITER)
                             way_nodes_writer = csv.writer(csv_way_nodes_file, delimiter=CSV_DELIMITER)
 
-                            for event, elem in etree.iterparse(osm_file):
-                                if elem.tag == 'node':
-                                    point_geom = [float(elem.attrib['lon']), float(elem.attrib['lat'])]
-                                    if len(elem) > 0:
-                                        tag_dict = parse_node_children(elem)
-                                        attrib_values = [point_geom]
-                                        for attr in node_base_attr:
-                                            attrib_values.append(elem.attrib[attr])
-                                        for key in STANDARD_FIELDS_ARRAY:
-                                            if key in tag_dict:
-                                                attrib_values.append(tag_dict[key])
-                                            else:
-                                                attrib_values.append(None)
+                            parent = None
+                            for event, elem in etree.iterparse(osm_file, events=('start', 'end')):
+                                if event == 'start':
+                                    if parent is None and elem.tag == 'osm':
+                                        parent = elem
+                                else:
+                                    if elem.tag == 'node':
+                                        point_geom = [float(elem.attrib['lon']), float(elem.attrib['lat'])]
+                                        if len(elem) > 0:
+                                            tag_dict = parse_node_children(elem)
+                                            attrib_values = [point_geom]
+                                            for attr in node_base_attr:
+                                                attrib_values.append(elem.attrib[attr])
+                                            for key in STANDARD_FIELDS_ARRAY:
+                                                if key in tag_dict:
+                                                    attrib_values.append(tag_dict[key])
+                                                else:
+                                                    attrib_values.append(None)
 
-                                        insert_nodes_cursor.insertRow(attrib_values)
-                                        count_nodes_with_attributes += 1
+                                            insert_nodes_cursor.insertRow(attrib_values)
+                                            count_nodes_with_attributes += 1
 
-                                    csv_nodes_file_writer.writerow([
-                                        elem.attrib['id'],
-                                        elem.attrib['lon'],
-                                        elem.attrib['lat']]
-                                    )
+                                        csv_nodes_file_writer.writerow([
+                                            elem.attrib['id'],
+                                            elem.attrib['lon'],
+                                            elem.attrib['lat']]
+                                        )
 
-                                    count_nodes += 1
-                                    elem.clear()
+                                        count_nodes += 1
+                                        if count_nodes % nodes_chunk_size == 0:
+                                            arcpy.AddMessage(
+                                                'Loaded {} nodes ... Still loading ...'.format(count_nodes)
+                                            )
+                                        elem.clear()
+                                        parent.remove(elem)
 
-                                elif elem.tag == 'way':
-                                    tag_dict, nodes = parse_way_children(elem)
-                                    if len(nodes) >= 2:
+                                    elif elem.tag == 'way':
+                                        tag_dict, nodes = parse_way_children(elem)
+                                        if len(nodes) >= 2:
+                                            attrib_values = []
+
+                                            # Add the attributes associated with the tag
+                                            for attr in way_base_attr:
+                                                attrib_values.append(elem.attrib[attr])
+
+                                            # Add the attributes coming from children tags
+                                            for key in STANDARD_FIELDS_ARRAY:
+                                                if key in tag_dict:
+                                                    attrib_values.append(tag_dict[key])
+                                                else:
+                                                    attrib_values.append(None)
+
+                                            if len(tag_dict) > 0:
+                                                count_ways_with_attributes += 1
+                                                insert_way_line_cursor.insertRow(attrib_values)
+
+                                            empty_coordinates = ['' for node in nodes]
+
+                                            is_highway = 'n'
+                                            if 'highway' in tag_dict and tag_dict['highway'] != '':
+                                                is_highway = 'y'
+
+                                            count_ways += 1
+                                            if count_ways % nodes_chunk_size == 0:
+                                                arcpy.AddMessage(
+                                                    'Loaded {} ways ... Still loading ...'.format(count_ways)
+                                                )
+
+                                            way_nodes_writer.writerow([
+                                                elem.attrib['id'],
+                                                IDENTIFIER_DELIMITER.join(nodes),
+                                                IDENTIFIER_DELIMITER.join(empty_coordinates),
+                                                is_highway
+                                            ])
+
+                                        else:
+                                            arcpy.AddWarning('Way with id {} has less than 2 nodes'.format(
+                                                elem.attrib['id'])
+                                            )
+
+                                        # for child in elem:
+                                        #     child.clear()
+
+                                        elem.clear()
+                                        parent.remove(elem)
+                                        toto = 'Toto'
+
+                                    elif elem.tag == 'relation':
+                                        tag_dict, members, type, way_members = parse_relation_children(elem)
                                         attrib_values = []
-
-                                        # Add the attributes associated with the tag
                                         for attr in way_base_attr:
                                             attrib_values.append(elem.attrib[attr])
 
-                                        # Add the attributes coming from children tags
                                         for key in STANDARD_FIELDS_ARRAY:
                                             if key in tag_dict:
                                                 attrib_values.append(tag_dict[key])
                                             else:
                                                 attrib_values.append(None)
 
-                                        if len(tag_dict) > 0:
-                                            count_ways_with_attributes += 1
-                                            insert_way_line_cursor.insertRow(attrib_values)
+                                        # members_id = []
+                                        # for member in members:
+                                        #     if member.attrib['type'] == 'way':
+                                        #         members_id.append(member.attrib['ref'])
+                                        #     member.clear()
 
-                                        empty_coordinates = ['' for node in nodes]
-
-                                        is_highway = 'n'
-                                        if 'highway' in tag_dict and tag_dict['highway'] != '':
-                                            is_highway = 'y'
-
-                                        count_ways += 1
-                                        way_nodes_writer.writerow([
-                                            elem.attrib['id'],
-                                            IDENTIFIER_DELIMITER.join(nodes),
-                                            IDENTIFIER_DELIMITER.join(empty_coordinates),
-                                            is_highway
-                                        ])
-
+                                        if 'type' in tag_dict:
+                                            if tag_dict['type'] == 'multipolygon':
+                                                count_multipolygons += 1
+                                                multipolygon_cursor.insertRow(attrib_values)
+                                                multipolygon_temporary_file.write(
+                                                    '{}|{}\n'.format(elem.attrib[ID_FIELD.name], ','.join(way_members))
+                                                )
                                         elem.clear()
-                                    else:
-                                        arcpy.AddWarning('Way with id {} has less than 2 nodes'.format(
-                                            elem.attrib['id'])
-                                        )
-
-                                elif elem.tag == 'relation':
-                                    tag_dict, members, type = parse_relation_children(elem)
-                                    attrib_values = []
-                                    for attr in way_base_attr:
-                                        attrib_values.append(elem.attrib[attr])
-
-                                    for key in STANDARD_FIELDS_ARRAY:
-                                        if key in tag_dict:
-                                            attrib_values.append(tag_dict[key])
-                                        else:
-                                            attrib_values.append(None)
-
-                                    members_id = []
-                                    for member in members:
-                                        if member.attrib['type'] == 'way':
-                                            members_id.append(member.attrib['ref'])
-                                        member.clear()
-
-                                    if 'type' in tag_dict:
-                                        if tag_dict['type'] == 'multipolygon':
-                                            count_multipolygons += 1
-                                            multipolygon_cursor.insertRow(attrib_values)
-                                            multipolygon_temporary_file.write(
-                                                '{}|{}\n'.format(elem.attrib[ID_FIELD.name], ','.join(members_id))
-                                            )
-                                    elem.clear()
+                                        parent.remove(elem)
+                                    # elif elem.tag == 'bounds':
+                                    #     elem.clear()
 
             arcpy.AddMessage('Imported {} nodes. {} nodes have attributes.'.format(
                 count_nodes,

@@ -355,6 +355,15 @@ def import_osm(osm_file, output_geodatabase, nodes_feature_class, csv_nodes_path
 ###################################
 @timeit
 def build_ways(csv_nodes_path, csv_way_nodes, csv_built_ways, csv_built_areas, nodes_chunk_size=500000):
+    """
+    Derive geometries from way lines and way polygons from the csv representing nodes and way_nodes files
+    :param csv_nodes_path: The csv files containing nodes.
+    :param csv_way_nodes: The csv files containing the way / nodes association.
+    :param csv_built_ways: The output csv files where line geometries will be written
+    :param csv_built_areas: The output csv file where polygons geometries will be written.
+    :param nodes_chunk_size: The number of nodes loaded in memory at once in memory.
+    :return:
+    """
     nodes_read = 0
     arcpy.AddMessage('Building ways')
     node_dict = {}
@@ -363,38 +372,41 @@ def build_ways(csv_nodes_path, csv_way_nodes, csv_built_ways, csv_built_areas, n
     count_built_ways = 0
     count_built_areas = 0
 
-    with open(csv_nodes_path, 'rb') as csv_nodes:
-        nodes_reader = csv.reader(csv_nodes, delimiter=CSV_DELIMITER)
-        for node_row in nodes_reader:
-            if nodes_read % nodes_chunk_size == 0 and nodes_read > 1:
+    with open(csv_built_ways, 'w') as csv_built_ways_file:
+        build_way_csv_writer = csv.writer(csv_built_ways_file, delimiter=CSV_DELIMITER)
+        with open(csv_built_areas, 'w') as csv_built_areas_file:
+            build_areas_csv_writer = csv.writer(csv_built_areas_file, delimiter=CSV_DELIMITER)
+            with open(csv_nodes_path, 'rb') as csv_nodes:
+                nodes_reader = csv.reader(csv_nodes, delimiter=CSV_DELIMITER)
+                for node_row in nodes_reader:
+                    node_dict[node_row[0]] = node_row[1] + ' ' + node_row[2]
+                    nodes_read += 1
+                    if nodes_read % nodes_chunk_size == 0:
+                        arcpy.AddMessage('{} nodes read'.format(nodes_read))
+                        # Call function to process chunk
+                        remaining_ways, built_ways, built_areas = process_way_chunk(
+                            node_dict,
+                            csv_way_nodes,
+                            build_way_csv_writer,
+                            build_areas_csv_writer
+                        )
+                        count_remaining_ways = remaining_ways
+                        count_built_ways += built_ways
+                        count_built_areas += built_areas
+                        node_dict.clear()
+
+            # Call function to process chunk
+            if len(node_dict) > 0:
                 arcpy.AddMessage('{} nodes read'.format(nodes_read))
-                # Call function to process chunk
                 remaining_ways, built_ways, built_areas = process_way_chunk(
                     node_dict,
                     csv_way_nodes,
-                    csv_built_ways,
-                    csv_built_areas
+                    build_way_csv_writer,
+                    build_areas_csv_writer
                 )
-                count_remaining_ways = count_remaining_ways
+                count_remaining_ways = remaining_ways
                 count_built_ways += built_ways
                 count_built_areas += built_areas
-
-                node_dict.clear()
-            node_dict[node_row[0]] = node_row[1] + ' ' + node_row[2]
-            nodes_read += 1
-
-    # Call function to process chunk
-    if len(node_dict) > 0:
-        arcpy.AddMessage('{} nodes read'.format(nodes_read))
-        remaining_ways, built_ways, built_areas = process_way_chunk(
-            node_dict,
-            csv_way_nodes,
-            csv_built_ways,
-            csv_built_areas
-        )
-        count_remaining_ways = remaining_ways
-        count_built_ways += built_ways
-        count_built_areas += built_areas
 
     if count_remaining_ways > 0:
         arcpy.AddWarning(
@@ -405,19 +417,23 @@ def build_ways(csv_nodes_path, csv_way_nodes, csv_built_ways, csv_built_areas, n
     arcpy.AddMessage('Total built lines: {}, Total built areas: {}'.format(count_built_ways, count_built_areas))
 
 
-def process_way_chunk(nodes_dict, csv_way_nodes, csv_built_ways, csv_built_areas):
+def process_way_chunk(nodes_dict, csv_way_nodes, build_way_csv_writer, build_areas_csv_writer):
+    """
+    Process a chunk of nodes loaded in-memory. Associated then with ways and write lines and polygons to a csv file.
+    :param nodes_dict: A chunk of nodes loaded in memory.
+    :param csv_way_nodes: The csv that contains the association between ways and nodes.
+    :param build_way_csv_writer: The csv writer files where line geometries will be written
+    :param build_areas_csv_writer: The csv writer file where polygons geometries will be written.
+    :return:
+    """
     count_remaining_ways = 0
     count_built_ways = 0
     count_built_areas = 0
     csv_way_nodes_temp = csv_way_nodes + '_temp'
     with open(csv_way_nodes, 'rb') as csv_way_nodes_file:
-        with open(csv_way_nodes_temp, 'a') as csv_way_nodes_file_temp:
-            with open(csv_built_ways, 'a') as csv_built_ways_file:
-                with open(csv_built_areas, 'a') as csv_built_areas_file:
+        with open(csv_way_nodes_temp, 'w') as csv_way_nodes_file_temp:
                     reader = csv.reader(csv_way_nodes_file, delimiter=CSV_DELIMITER)
                     writer = csv.writer(csv_way_nodes_file_temp, delimiter=CSV_DELIMITER)
-                    build_way_writer = csv.writer(csv_built_ways_file, delimiter=CSV_DELIMITER)
-                    build_areas_writer = csv.writer(csv_built_areas_file, delimiter=CSV_DELIMITER)
                     for row in reader:
                         id = row[0]
                         nodes = row[1].split(IDENTIFIER_DELIMITER)
@@ -442,10 +458,10 @@ def process_way_chunk(nodes_dict, csv_way_nodes, csv_built_ways, csv_built_areas
                             ]
                             if nodes[-1] == nodes[0] and is_linear == 'n':
                                 count_built_areas += 1
-                                build_areas_writer.writerow(csv_array)
+                                build_areas_csv_writer.writerow(csv_array)
                             else:
                                 count_built_ways += 1
-                                build_way_writer.writerow(csv_array)
+                                build_way_csv_writer.writerow(csv_array)
                         else:
                             count_remaining_ways += 1
                             csv_array = [

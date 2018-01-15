@@ -257,6 +257,20 @@ def create_relations_member(workspace, table_name):
 ###################################
 @timeit
 def import_osm(osm_file, output_geodatabase, nodes_feature_class, csv_nodes_path, way_feature_class, csv_way_nodes, multipolygon_feature_class, multipolygon_temporary_file):
+    """
+    Parse the OSM file and put the relevant information into temporaries csv files and feature class.
+    :param osm_file: The path to the xml file compressed as bz2.
+    :param output_geodatabase: The geodatabase that contains the temporary feature class
+    (used for controlling the edit session)
+    :param nodes_feature_class: The feature class the contains nodes and their attributes. Only nodes with
+    attributes will be written here.
+    :param csv_nodes_path: The path to the csv file that will contain the association between ways and nodes.
+    :param way_feature_class: The feature class that will contain the line geometries.
+    :param csv_way_nodes: The csv file that will contain the association between ways and nodes.
+    :param multipolygon_feature_class: The feature class that will contain the multipolygons and their tags.
+    :param multipolygon_temporary_file: The temporary files used to write multipolygons components.
+    :return:
+    """
     node_base_attr = [field.name for field in NODE_SAVED_ATTRIBUTES]
     node_all_attr = ['SHAPE@XY'] + node_base_attr + STANDARD_FIELDS_ARRAY
 

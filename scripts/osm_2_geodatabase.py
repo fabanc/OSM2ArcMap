@@ -237,9 +237,9 @@ def import_osm(osm_file, output_geodatabase, nodes_feature_class, csv_nodes_path
     # Edit session is required to edit multiple feature class at a time within the same workspace
     with arcpy.da.Editor(output_geodatabase) as edit:
         with arcpy.da.InsertCursor(nodes_feature_class, node_all_attr) as insert_nodes_cursor:
-            with open(csv_nodes_path, 'wb') as csv_nodes_file:
+            with open(csv_nodes_path, 'w') as csv_nodes_file:
                 with arcpy.da.InsertCursor(way_feature_class, way_tags_all_attr) as insert_way_line_cursor:
-                    with open(csv_way_nodes, 'wb') as csv_way_nodes_file:
+                    with open(csv_way_nodes, 'w') as csv_way_nodes_file:
                         with arcpy.da.InsertCursor(multipolygon_feature_class, way_tags_all_attr) as multipolygon_cursor:
                             csv_nodes_file_writer = csv.writer(csv_nodes_file, delimiter=CSV_DELIMITER)
                             way_nodes_writer = csv.writer(csv_way_nodes_file, delimiter=CSV_DELIMITER)
@@ -289,6 +289,7 @@ def import_osm(osm_file, output_geodatabase, nodes_feature_class, csv_nodes_path
                                         if len(tag_dict) > 0:
                                             count_ways_with_attributes += 1
                                             insert_way_line_cursor.insertRow(attrib_values)
+
                                         empty_coordinates = ['' for node in nodes]
 
                                         is_highway = 'n'
@@ -305,9 +306,10 @@ def import_osm(osm_file, output_geodatabase, nodes_feature_class, csv_nodes_path
 
                                         elem.clear()
                                     else:
-                                        print 'Detected way with less than 2 nodes'
+                                        arcpy.AddWarning('Way with id {} has less than 2 nodes'.format(
+                                            elem.attrib['id'])
+                                        )
 
-                                # TODO Write relations to csv file. List of
                                 elif elem.tag == 'relation':
                                     tag_dict, members, type = parse_relation_children(elem)
                                     attrib_values = []
@@ -376,7 +378,7 @@ def build_ways(csv_nodes_path, csv_way_nodes, csv_built_ways, csv_built_areas, n
         build_way_csv_writer = csv.writer(csv_built_ways_file, delimiter=CSV_DELIMITER)
         with open(csv_built_areas, 'w') as csv_built_areas_file:
             build_areas_csv_writer = csv.writer(csv_built_areas_file, delimiter=CSV_DELIMITER)
-            with open(csv_nodes_path, 'rb') as csv_nodes:
+            with open(csv_nodes_path, 'r') as csv_nodes:
                 nodes_reader = csv.reader(csv_nodes, delimiter=CSV_DELIMITER)
                 for node_row in nodes_reader:
                     node_dict[node_row[0]] = node_row[1] + ' ' + node_row[2]
@@ -430,7 +432,7 @@ def process_way_chunk(nodes_dict, csv_way_nodes, build_way_csv_writer, build_are
     count_built_ways = 0
     count_built_areas = 0
     csv_way_nodes_temp = csv_way_nodes + '_temp'
-    with open(csv_way_nodes, 'rb') as csv_way_nodes_file:
+    with open(csv_way_nodes, 'r') as csv_way_nodes_file:
         with open(csv_way_nodes_temp, 'w') as csv_way_nodes_file_temp:
                     reader = csv.reader(csv_way_nodes_file, delimiter=CSV_DELIMITER)
                     writer = csv.writer(csv_way_nodes_file_temp, delimiter=CSV_DELIMITER)
@@ -466,7 +468,7 @@ def process_way_chunk(nodes_dict, csv_way_nodes, build_way_csv_writer, build_are
                             count_remaining_ways += 1
                             csv_array = [
                                 id,
-                                IDENTIFIER_DELIMITER.join(nodes),
+                                row[1],
                                 IDENTIFIER_DELIMITER.join(coordinates),
                                 is_linear
                             ]

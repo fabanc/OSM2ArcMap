@@ -213,7 +213,7 @@ def create_way_table(workspace, table_name, standard_fields):
     :param workspace: The geodatabase where the feature class will be created.
     :param table_name: The name of the output table.
     :param standard_fields: The numpy array representing the OSM attribute fields
-    :return:
+    :return: The full path to the table.
     """
     way_tag_table = os.path.join(workspace, table_name)
     arcpy.CreateTable_management(workspace, table_name)
@@ -225,6 +225,13 @@ def create_way_table(workspace, table_name, standard_fields):
 
 @timeit
 def create_multipolygon_table(workspace, feature_class_name, standard_fields):
+    """
+
+    :param workspace: The geodatabase where the feature class will be created.
+    :param feature_class_name: The name of the output feature class.
+    :param standard_fields: The numpy array representing the OSM attribute fields
+    :return: The full path to the feature class.
+    """
     multipolygon_feature_class = os.path.join(workspace, feature_class_name)
     arcpy.CreateFeatureclass_management(workspace, feature_class_name, "POLYGON", "#", "DISABLED", "DISABLED",
                                         COORDINATES_SYSTEM)

@@ -151,16 +151,41 @@ def parse_relation_children(elem):
 
 @timeit
 def create_node_feature_class(workspace, feature_class_name, standard_fields):
+    """
+    Create the node feature class table. The table is created with a set of valid tags.
+    :param workspace: The geodatabase where the feature class will be created.
+    :param feature_class_name: The name of the output feature class.
+    :param standard_fields: The numpy array representing the OSM attribute fields
+    :return: The full path to the feature class.
+    """
     node_feature_class = os.path.join(workspace, feature_class_name)
-    arcpy.CreateFeatureclass_management(workspace, feature_class_name, "point", "#", "DISABLED", "DISABLED", COORDINATES_SYSTEM)
+    arcpy.CreateFeatureclass_management(
+        workspace,
+        feature_class_name,
+        "point",
+        "#",
+        "DISABLED",
+        "DISABLED",
+        COORDINATES_SYSTEM
+    )
+
+    # The list of xml element attributes that will be added as
     for field in NODE_SAVED_ATTRIBUTES:
         arcpy.AddField_management(node_feature_class, field.name, field.type, "#", "#", field.length)
+
+    # The fields for the "tag" children xml elements of each "node" element
     arcpy.da.ExtendTable(node_feature_class, "OID@", standard_fields, "_ID")
     return node_feature_class
 
 
 @timeit
 def create_way_line_geom_feature_class(workspace, feature_class_name):
+    """
+    Create the feature class that will contain only the line geometries and their OSM identifiers.
+    :param workspace: The geodatabase where the feature class will be created.
+    :param feature_class_name: The name of the output feature class.
+    :return: The full path to the feature class.
+    """
     way_tag_feature_class = os.path.join(workspace, feature_class_name)
     arcpy.CreateFeatureclass_management(workspace, feature_class_name, "POLYLINE", "#", "DISABLED", "DISABLED",COORDINATES_SYSTEM)
     arcpy.AddField_management(way_tag_feature_class, ID_FIELD.name, 'STRING', "#", "#", ID_FIELD.length)
@@ -169,6 +194,12 @@ def create_way_line_geom_feature_class(workspace, feature_class_name):
 
 @timeit
 def create_way_polygon_geom_feature_class(workspace, feature_class_name):
+    """
+    Create the feature class that will contain only the polygon geometries and their OSM identifiers.
+    :param workspace: The geodatabase where the feature class will be created.
+    :param feature_class_name: The name of the output feature class.
+    :return: The full path to the feature class.
+    """
     way_tag_feature_class = os.path.join(workspace, feature_class_name)
     arcpy.CreateFeatureclass_management(workspace, feature_class_name, "POLYGON", "#", "DISABLED", "DISABLED",COORDINATES_SYSTEM)
     arcpy.AddField_management(way_tag_feature_class, ID_FIELD.name, 'STRING', "#", "#", ID_FIELD.length)
@@ -177,6 +208,13 @@ def create_way_polygon_geom_feature_class(workspace, feature_class_name):
 
 @timeit
 def create_way_table(workspace, table_name, standard_fields):
+    """
+    Create a table that will contains the tag associated with way elements.
+    :param workspace: The geodatabase where the feature class will be created.
+    :param table_name: The name of the output table.
+    :param standard_fields: The numpy array representing the OSM attribute fields
+    :return:
+    """
     way_tag_table = os.path.join(workspace, table_name)
     arcpy.CreateTable_management(workspace, table_name)
     for field in WAY_SAVED_ATTRIBUTES:

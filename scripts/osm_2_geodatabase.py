@@ -7,7 +7,7 @@ try:
     from lxml import etree
 except:
     import xml.etree.ElementTree as etree
-
+# import xml.etree.ElementTree as etree
 
 arcpy.env.overwriteOutput = True
 
@@ -510,15 +510,12 @@ def process_way_chunk(nodes_dict, csv_way_nodes, build_way_csv_writer, build_are
                         is_linear = row[3]
 
                         completed = True
-                        for index in range(len(nodes)):
-                            node_id = nodes[index]
+                        for index, node_id in enumerate(nodes):
                             if node_id in nodes_dict:
                                 node = nodes_dict[node_id]
                                 coordinates[index] = node
-                            else:
-                                coordinate = coordinates[index]
-                                if coordinate is None or coordinate == '':
-                                    completed = False
+                            elif coordinates[index] == '':
+                                completed = False
 
                         if completed:
                             csv_array = [

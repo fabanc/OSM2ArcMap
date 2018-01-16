@@ -1,11 +1,13 @@
 # "D:\Temp\Custom OSM Parser\luxembourg-latest.osm.bz2" "D:\Temp\Custom OSM Parser\luxembourg-latest.gdb" "D:\Temp\Custom OSM Parser" 500000
 # "D:\Temp\Custom OSM Parser\monaco-latest.osm.bz2" "D:\Temp\Custom OSM Parser\monaco-latest.gdb"
-import os, time, bz2, tempfile, time, csv, itertools, datetime
+import os, time, bz2, tempfile, time, csv, itertools, datetime, arcpy, numpy
 
-# TODO Make a dynamic load of lxml. If fail, use regular xml element tree.
-import xml.etree.ElementTree as etree
-# from lxml import etree
-import arcpy, numpy
+
+try:
+    from lxml import etree
+except:
+    import xml.etree.ElementTree as etree
+
 
 arcpy.env.overwriteOutput = True
 
@@ -110,12 +112,7 @@ def create_output_workspace(workspace):
 # PARSING FUNCTIONS FOR NODES, WAYS, AND RELATIONSHIPS
 ###################################
 def parse_node_children(elem):
-    tag_dict = {}
-    for child in elem:
-        if child.tag == 'tag':
-            tag_dict[child.attrib['k']] = child.attrib['v']
-        child.clear()
-    return tag_dict
+    return {child.attrib['k']: child.attrib['v'] for child in elem if child.tag == 'tag'}
 
 
 def parse_way_children(elem):
@@ -134,12 +131,12 @@ def parse_relation_children(elem):
     tag_dict = {}
     members = []
     way_members = []
-    type = None
+    elem_type = None
     for child in elem:
         if child.tag == 'tag':
             tag_dict[child.attrib['k']] = child.attrib['v']
             if child.attrib['k'] == 'type':
-                type = child.attrib['v']
+                elem_type = child.attrib['v']
 
         elif child.tag == 'member':
             # members.append(child)
@@ -147,7 +144,7 @@ def parse_relation_children(elem):
                 way_members.append(child.attrib['ref'])
 
         child.clear()
-    return tag_dict, members, type, way_members
+    return tag_dict, members, elem_type, way_members
 
 ###################################
 # FUNCTIONS TO CREATE FEATURE CLASS
@@ -276,11 +273,15 @@ def import_osm(osm_file, output_geodatabase, nodes_feature_class, csv_nodes_path
     :param multipolygon_temporary_file: The temporary files used to write multipolygons components.
     :return:
     """
+    # Local copies of global variable. Referencing local variables in faster in python than global ones.
+    standard_fields_array = STANDARD_FIELDS_ARRAY
+    identifier_delimiter = IDENTIFIER_DELIMITER
+
     node_base_attr = [field.name for field in NODE_SAVED_ATTRIBUTES]
-    node_all_attr = ['SHAPE@XY'] + node_base_attr + STANDARD_FIELDS_ARRAY
+    node_all_attr = ['SHAPE@XY'] + node_base_attr + standard_fields_array
 
     way_base_attr = [field.name for field in WAY_SAVED_ATTRIBUTES]
-    way_tags_all_attr = way_base_attr + STANDARD_FIELDS_ARRAY
+    way_tags_all_attr = way_base_attr + standard_fields_array
 
     count_nodes = 0
     count_nodes_with_attributes = 0
@@ -311,7 +312,7 @@ def import_osm(osm_file, output_geodatabase, nodes_feature_class, csv_nodes_path
                                             attrib_values = [point_geom]
                                             for attr in node_base_attr:
                                                 attrib_values.append(elem.attrib[attr])
-                                            for key in STANDARD_FIELDS_ARRAY:
+                                            for key in standard_fields_array:
                                                 if key in tag_dict:
                                                     attrib_values.append(tag_dict[key])
                                                 else:
@@ -327,24 +328,21 @@ def import_osm(osm_file, output_geodatabase, nodes_feature_class, csv_nodes_path
                                         )
 
                                         count_nodes += 1
-                                        if count_nodes % nodes_chunk_size == 0:
+                                        if count_nodes % 1000000 == 0:
                                             arcpy.AddMessage(
-                                                'Loaded {} nodes ... Still loading ...'.format(count_nodes)
+                                                'Loaded {0} nodes ... Still loading ...'.format(count_nodes)
                                             )
                                         elem.clear()
                                         parent.remove(elem)
 
                                     elif elem.tag == 'way':
                                         tag_dict, nodes = parse_way_children(elem)
-                                        if len(nodes) >= 2:
-                                            attrib_values = []
 
-                                            # Add the attributes associated with the tag
-                                            for attr in way_base_attr:
-                                                attrib_values.append(elem.attrib[attr])
+                                        if len(nodes) >= 2:
+                                            attrib_values = [elem.attrib[attr] for attr in way_base_attr]
 
                                             # Add the attributes coming from children tags
-                                            for key in STANDARD_FIELDS_ARRAY:
+                                            for key in standard_fields_array:
                                                 if key in tag_dict:
                                                     attrib_values.append(tag_dict[key])
                                                 else:
@@ -361,15 +359,15 @@ def import_osm(osm_file, output_geodatabase, nodes_feature_class, csv_nodes_path
                                                 is_highway = 'y'
 
                                             count_ways += 1
-                                            if count_ways % nodes_chunk_size == 0:
+                                            if count_ways % 1000000 == 0:
                                                 arcpy.AddMessage(
                                                     'Loaded {} ways ... Still loading ...'.format(count_ways)
                                                 )
 
                                             way_nodes_writer.writerow([
                                                 elem.attrib['id'],
-                                                IDENTIFIER_DELIMITER.join(nodes),
-                                                IDENTIFIER_DELIMITER.join(empty_coordinates),
+                                                identifier_delimiter.join(nodes),
+                                                identifier_delimiter.join(empty_coordinates),
                                                 is_highway
                                             ])
 
@@ -378,30 +376,20 @@ def import_osm(osm_file, output_geodatabase, nodes_feature_class, csv_nodes_path
                                                 elem.attrib['id'])
                                             )
 
-                                        # for child in elem:
-                                        #     child.clear()
-
                                         elem.clear()
                                         parent.remove(elem)
-                                        toto = 'Toto'
+                                        # toto = 'Toto'
 
                                     elif elem.tag == 'relation':
-                                        tag_dict, members, type, way_members = parse_relation_children(elem)
-                                        attrib_values = []
-                                        for attr in way_base_attr:
-                                            attrib_values.append(elem.attrib[attr])
+                                        tag_dict, members, elem_type, way_members = parse_relation_children(elem)
 
-                                        for key in STANDARD_FIELDS_ARRAY:
+                                        attrib_values = [elem.attrib[attr] for attr in way_base_attr]
+
+                                        for key in standard_fields_array:
                                             if key in tag_dict:
                                                 attrib_values.append(tag_dict[key])
                                             else:
                                                 attrib_values.append(None)
-
-                                        # members_id = []
-                                        # for member in members:
-                                        #     if member.attrib['type'] == 'way':
-                                        #         members_id.append(member.attrib['ref'])
-                                        #     member.clear()
 
                                         if 'type' in tag_dict:
                                             if tag_dict['type'] == 'multipolygon':
@@ -412,8 +400,6 @@ def import_osm(osm_file, output_geodatabase, nodes_feature_class, csv_nodes_path
                                                 )
                                         elem.clear()
                                         parent.remove(elem)
-                                    # elif elem.tag == 'bounds':
-                                    #     elem.clear()
 
             arcpy.AddMessage('Imported {} nodes. {} nodes have attributes.'.format(
                 count_nodes,
@@ -506,6 +492,9 @@ def process_way_chunk(nodes_dict, csv_way_nodes, build_way_csv_writer, build_are
     :param build_areas_csv_writer: The csv writer file where polygons geometries will be written.
     :return:
     """
+    # Local copies of global variable. Referencing local variables in faster in python than global ones.
+    identifier_delimiter = IDENTIFIER_DELIMITER
+
     count_remaining_ways = 0
     count_built_ways = 0
     count_built_areas = 0
@@ -515,9 +504,9 @@ def process_way_chunk(nodes_dict, csv_way_nodes, build_way_csv_writer, build_are
                     reader = csv.reader(csv_way_nodes_file, delimiter=CSV_DELIMITER)
                     writer = csv.writer(csv_way_nodes_file_temp, delimiter=CSV_DELIMITER)
                     for row in reader:
-                        id = row[0]
-                        nodes = row[1].split(IDENTIFIER_DELIMITER)
-                        coordinates = row[2].split(IDENTIFIER_DELIMITER)
+                        identifier = row[0]
+                        nodes = row[1].split(identifier_delimiter)
+                        coordinates = row[2].split(identifier_delimiter)
                         is_linear = row[3]
 
                         completed = True
@@ -533,8 +522,8 @@ def process_way_chunk(nodes_dict, csv_way_nodes, build_way_csv_writer, build_are
 
                         if completed:
                             csv_array = [
-                                id,
-                                IDENTIFIER_DELIMITER.join(coordinates)
+                                identifier,
+                                identifier_delimiter.join(coordinates)
                             ]
                             if nodes[-1] == nodes[0] and is_linear == 'n':
                                 count_built_areas += 1
@@ -545,9 +534,9 @@ def process_way_chunk(nodes_dict, csv_way_nodes, build_way_csv_writer, build_are
                         else:
                             count_remaining_ways += 1
                             csv_array = [
-                                id,
+                                identifier,
                                 row[1],
-                                IDENTIFIER_DELIMITER.join(coordinates),
+                                identifier_delimiter.join(coordinates),
                                 is_linear
                             ]
 
@@ -600,18 +589,16 @@ def build_polygons(polygon_feature_class, built_areas_path):
     :param built_areas_path: The csv that contains the polygon features definition.
     :return: None.
     """
+    identifier_delimiter = IDENTIFIER_DELIMITER
     count = 0
-
     with arcpy.da.Editor(output_geodatabase) as edit:
         with arcpy.da.InsertCursor(polygon_feature_class, [ID_FIELD.name, 'SHAPE@']) as insert_cursor:
             with open(built_areas_path, 'rb') as build_ways_path_file:
                 csv_reader = csv.reader(build_ways_path_file, delimiter=CSV_DELIMITER)
                 for row in csv_reader:
-                    geometry_txt = row[1].split(IDENTIFIER_DELIMITER)
+                    geometry_txt = row[1].split(identifier_delimiter)
                     geometries = [g.split(' ') for g in geometry_txt]
-                    point_array = []
-                    for geom in geometries:
-                        point_array.append((float(geom[0]), float(geom[1])))
+                    point_array = [(float(geom[0]), float(geom[1])) for geom in geometries]
                     insert_cursor.insertRow((row[0], point_array))
                     count += 1
     arcpy.AddMessage('Inserted {} polygon geometries'.format(count))
@@ -842,5 +829,5 @@ if __name__ == '__main__':
     input_osm_file = arcpy.GetParameterAsText(0)
     output_geodatabase = arcpy.GetParameterAsText(1)
     temporary_workspace = arcpy.GetParameterAsText(2)
-    nodes_chunk_size = arcpy.GetParameterAsText(3)
+    nodes_chunk_size = arcpy.GetParameter(3)
     process(input_osm_file, output_geodatabase, temporary_workspace, nodes_chunk_size=int(nodes_chunk_size))

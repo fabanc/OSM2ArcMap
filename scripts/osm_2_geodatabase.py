@@ -1,13 +1,9 @@
-# "D:\Temp\Custom OSM Parser\luxembourg-latest.osm.bz2" "D:\Temp\Custom OSM Parser\luxembourg-latest.gdb" "D:\Temp\Custom OSM Parser" 500000
-# "D:\Temp\Custom OSM Parser\monaco-latest.osm.bz2" "D:\Temp\Custom OSM Parser\monaco-latest.gdb"
 import os, time, bz2, tempfile, time, csv, itertools, datetime, arcpy, numpy
-
 
 try:
     from lxml import etree
 except:
     import xml.etree.ElementTree as etree
-# import xml.etree.ElementTree as etree
 
 arcpy.env.overwriteOutput = True
 
@@ -123,7 +119,7 @@ def parse_way_children(elem):
             tag_dict[child.attrib['k']] = child.attrib['v']
         elif child.tag == 'nd':
             nodes.append(child.attrib['ref'])
-        child.clear()
+        # child.clear()
     return tag_dict, nodes
 
 
@@ -306,7 +302,9 @@ def import_osm(osm_file, output_geodatabase, nodes_feature_class, csv_nodes_path
                                         parent = elem
                                 else:
                                     if elem.tag == 'node':
-                                        point_geom = [float(elem.attrib['lon']), float(elem.attrib['lat'])]
+                                        lat = elem.attrib['lat']
+                                        lon = elem.attrib['lon']
+                                        point_geom = [float(lon), float(lat)]
                                         if len(elem) > 0:
                                             tag_dict = parse_node_children(elem)
                                             attrib_values = [point_geom]
@@ -323,9 +321,9 @@ def import_osm(osm_file, output_geodatabase, nodes_feature_class, csv_nodes_path
 
                                         csv_nodes_file_writer.writerow([
                                             elem.attrib['id'],
-                                            elem.attrib['lon'],
-                                            elem.attrib['lat']]
-                                        )
+                                            lon,
+                                            lat
+                                        ])
 
                                         count_nodes += 1
                                         if count_nodes % 1000000 == 0:
@@ -396,7 +394,7 @@ def import_osm(osm_file, output_geodatabase, nodes_feature_class, csv_nodes_path
                                                 count_multipolygons += 1
                                                 multipolygon_cursor.insertRow(attrib_values)
                                                 multipolygon_temporary_file.write(
-                                                    '{}|{}\n'.format(elem.attrib[ID_FIELD.name], ','.join(way_members))
+                                                    '{}|{}\n'.format(elem.attrib['id'], ','.join(way_members))
                                                 )
                                         elem.clear()
                                         parent.remove(elem)
@@ -604,7 +602,9 @@ def build_polygons(polygon_feature_class, built_areas_path):
 @timeit
 def load_multipolygon_relations(multipolygons, multipolygon_member_temp_file, ways):
     multipolygon_member_temp_file.seek(0)
-    with arcpy.da.UpdateCursor(multipolygons, [ID_FIELD.name, 'SHAPE@']) as multipolygon_update_cursor:
+    coordinate_system = COORDINATES_SYSTEM
+    id_field_name = ID_FIELD.name
+    with arcpy.da.UpdateCursor(multipolygons, [id_field_name, 'SHAPE@']) as multipolygon_update_cursor:
         for row in multipolygon_update_cursor:
             line = multipolygon_member_temp_file.readline().rstrip('\n')
             infos = line.split('|')
@@ -619,13 +619,13 @@ def load_multipolygon_relations(multipolygons, multipolygon_member_temp_file, wa
 
             # Fetch the ways associated with the identifiers
             where_clause = '{} IN (\'{}\')'.format(
-                ID_FIELD.name,
+                id_field_name,
                 '\',\''.join(member_identifiers)
             )
 
             shape = arcpy.Array()
             shape_added = 0
-            with arcpy.da.SearchCursor(ways, [ID_FIELD.name, 'SHAPE@'], where_clause=where_clause) as ways_search_cursor:
+            with arcpy.da.SearchCursor(ways, [id_field_name, 'SHAPE@'], where_clause=where_clause) as ways_search_cursor:
                 for way_row in ways_search_cursor:
                     if way_row[1] is not None:
                         for part in way_row[1]:
@@ -633,10 +633,8 @@ def load_multipolygon_relations(multipolygons, multipolygon_member_temp_file, wa
                             shape_added += 1
 
             if shape_added > 0:
-                row[1] = arcpy.Polygon(shape, COORDINATES_SYSTEM)
+                row[1] = arcpy.Polygon(shape, coordinate_system)
                 multipolygon_update_cursor.updateRow(row)
-            # else:
-            #     arcpy.AddWarning('No suitable geometries for relation with id: {}'.format(row[0]))
 
 
 @timeit
@@ -821,8 +819,6 @@ def process(osm_file, output_geodatabase, processing_folder, nodes_chunk_size=50
 
 
 if __name__ == '__main__':
-    # osm_file = r'D:\Temp\Custom OSM Parser\monaco-latest.osm.bz2'
-    # output_geodatabase = r'D:\Temp\Custom OSM Parser\monaco-latest.gdb'
     input_osm_file = arcpy.GetParameterAsText(0)
     output_geodatabase = arcpy.GetParameterAsText(1)
     temporary_workspace = arcpy.GetParameterAsText(2)

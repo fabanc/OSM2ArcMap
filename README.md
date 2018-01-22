@@ -6,7 +6,7 @@ This geoprocessing tool reads an Open Street Map file (.osm) compressed in the t
 
 ## XML Parsing and use of lxml.
 
-This geoprocessing tool reads an Open Street Map file (.osm) compressed in the the .bz2 format. It writes the output to a file geodatabase. Note that when parsing the relations, only multipolygons will be built and added to the multipolygon feature class. Ways with a tag highway that is associated with a value will be considered as lines, even lollipops. This tool is written for ArcMap.
+This tool parses the osm content using the built-in library xml.etree.ElementTree if lxml is not installed. Otherwise the lxml library will be used. Using this latter library makes a huge difference in performance (divides the execution time by 2). The documentation about the lxml project can be found here: [lxml web site](http://lxml.de/)
 
 ## Compatibility with Python 3 and ArcGIS Pro
 

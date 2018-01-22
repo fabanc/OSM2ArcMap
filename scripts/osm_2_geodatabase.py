@@ -13,6 +13,8 @@ Summary:
     This tool parses the osm content using the built-in library xml.etree.ElementTree if lxml is not installed.
     Otherwise the lxml library will be used. Using this latter library makes a huge difference in performance
     (divides the execution time by 2). The documentation about the lxml project can be found here: http://lxml.de/
+
+Licence: Apache 2: https://github.com/fabanc/OSM2ArcMap/blob/master/LICENSE
 '''
 
 import os, time, bz2, tempfile, time, csv, itertools, datetime, arcpy, numpy

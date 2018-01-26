@@ -77,6 +77,7 @@ IDENTIFIER_DELIMITER = '|'
 CSV_DELIMITER = ','
 CSV_NODES = 'nodes.csv'
 CSV_WAY_NODES = 'way_nodes.csv'
+CSV_RELATIONS = 'relations_member.csv'
 
 
 def timeit(method):
@@ -395,7 +396,6 @@ def import_osm(osm_file, output_geodatabase, nodes_feature_class, csv_nodes_path
 
                                         elem.clear()
                                         parent.remove(elem)
-                                        # toto = 'Toto'
 
                                     elif elem.tag == 'relation':
                                         tag_dict, members, elem_type, way_members = parse_relation_children(elem)
@@ -607,7 +607,7 @@ def build_polygons(polygon_feature_class, built_areas_path):
     count = 0
     with arcpy.da.Editor(output_geodatabase) as edit:
         with arcpy.da.InsertCursor(polygon_feature_class, [ID_FIELD.name, 'SHAPE@']) as insert_cursor:
-            with open(built_areas_path, 'rb') as build_ways_path_file:
+            with open(built_areas_path, 'r') as build_ways_path_file:
                 csv_reader = csv.reader(build_ways_path_file, delimiter=CSV_DELIMITER)
                 for row in csv_reader:
                     geometry_txt = row[1].split(identifier_delimiter)
@@ -737,6 +737,7 @@ def process(osm_file, output_geodatabase, processing_folder, nodes_chunk_size=50
 
     csv_nodes = os.path.join(processing_folder, CSV_NODES)
     csv_way_nodes = os.path.join(processing_folder, CSV_WAY_NODES)
+    csv_relations_members = os.path.join(processing_folder, CSV_RELATIONS)
     csv_built_ways = os.path.join(processing_folder, 'built_ways.csv')
     csv_built_areas = os.path.join(processing_folder, 'built_areas.csv')
 
@@ -749,7 +750,7 @@ def process(osm_file, output_geodatabase, processing_folder, nodes_chunk_size=50
         way_attr_table
     ]
 
-    with tempfile.TemporaryFile() as multipolygon_temporary_file:
+    with open(csv_relations_members, 'w') as multipolygon_temporary_file:
         # Parse the XML file
         import_osm(
                 bz2.BZ2File(osm_file, 'r'),
@@ -762,63 +763,63 @@ def process(osm_file, output_geodatabase, processing_folder, nodes_chunk_size=50
                 multipolygon_temporary_file
         )
 
-        arcpy.AddIndex_management(
-            output_nodes_feature_class,
-            [ID_FIELD.name],
-            index_name='{}_idx'.format(ID_FIELD.name),
-            unique=True)
+    arcpy.AddIndex_management(
+        output_nodes_feature_class,
+        [ID_FIELD.name],
+        index_name='{}_idx'.format(ID_FIELD.name),
+        unique=True)
 
-        arcpy.AddIndex_management(
-            way_attr_table,
-            [ID_FIELD.name],
-            index_name='{}_idx'.format(ID_FIELD.name),
-            unique=True)
+    arcpy.AddIndex_management(
+        way_attr_table,
+        [ID_FIELD.name],
+        index_name='{}_idx'.format(ID_FIELD.name),
+        unique=True)
 
-        arcpy.AddIndex_management(
-            way_line_geom_feature_class,
-            [ID_FIELD.name],
-            index_name='{}_idx'.format(ID_FIELD.name),
-            unique=True)
+    arcpy.AddIndex_management(
+        way_line_geom_feature_class,
+        [ID_FIELD.name],
+        index_name='{}_idx'.format(ID_FIELD.name),
+        unique=True)
 
-        arcpy.AddIndex_management(
-            way_polygon_geom_feature_class,
-            [ID_FIELD.name],
-            index_name='{}_idx'.format(ID_FIELD.name),
-            unique=True)
+    arcpy.AddIndex_management(
+        way_polygon_geom_feature_class,
+        [ID_FIELD.name],
+        index_name='{}_idx'.format(ID_FIELD.name),
+        unique=True)
 
-        # Parse the csv files and associated nodes identifier with way nodes.
-        build_ways(
-            csv_nodes,
-            csv_way_nodes,
-            csv_built_ways,
-            csv_built_areas,
-            nodes_chunk_size
-        )
+    # Parse the csv files and associated nodes identifier with way nodes.
+    build_ways(
+        csv_nodes,
+        csv_way_nodes,
+        csv_built_ways,
+        csv_built_areas,
+        nodes_chunk_size
+    )
 
-        # Build the lines geometries - no attributes
-        build_lines(
-            way_line_geom_feature_class,
-            csv_built_ways
-        )
+    # Build the lines geometries - no attributes
+    build_lines(
+        way_line_geom_feature_class,
+        csv_built_ways
+    )
 
-        join_way_attribute(
-            way_line_geom_feature_class,
-            way_attr_table,
-            output_line_feature_class
-        )
+    join_way_attribute(
+        way_line_geom_feature_class,
+        way_attr_table,
+        output_line_feature_class
+    )
 
-        # Build the polygons geometries - no attributes
-        build_polygons(
-            way_polygon_geom_feature_class,
-            csv_built_areas
-        )
+    # Build the polygons geometries - no attributes
+    build_polygons(
+        way_polygon_geom_feature_class,
+        csv_built_areas
+    )
 
-        join_way_attribute(
-            way_polygon_geom_feature_class,
-            way_attr_table,
-            output_polygon_feature_class
-        )
-
+    join_way_attribute(
+        way_polygon_geom_feature_class,
+        way_attr_table,
+        output_polygon_feature_class
+    )
+    with open(csv_relations_members, 'r') as multipolygon_temporary_file:
         # Load the multipolygon
         load_multipolygon_relations(
             multipolygon_feature_class,
@@ -826,15 +827,15 @@ def process(osm_file, output_geodatabase, processing_folder, nodes_chunk_size=50
             way_polygon_geom_feature_class
         )
 
-        append_polygons(multipolygon_feature_class, output_polygon_feature_class)
+    append_polygons(multipolygon_feature_class, output_polygon_feature_class)
 
-        for csv_path in csv_to_remove:
-            if os.path.isfile(csv_path):
-                os.remove(csv_path)
+    for csv_path in csv_to_remove:
+        if os.path.isfile(csv_path):
+            os.remove(csv_path)
 
-        for fc in feature_class_to_remove:
-            if arcpy.Exists(fc):
-                arcpy.Delete_management(fc)
+    for fc in feature_class_to_remove:
+        if arcpy.Exists(fc):
+            arcpy.Delete_management(fc)
 
 
 if __name__ == '__main__':

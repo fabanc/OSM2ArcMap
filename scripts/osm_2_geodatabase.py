@@ -500,6 +500,7 @@ def build_ways(csv_nodes_path, csv_way_nodes, csv_built_ways, csv_built_areas, n
     arcpy.AddMessage('Total built lines: {}, Total built areas: {}'.format(count_built_ways, count_built_areas))
 
 
+@timeit
 def process_way_chunk(nodes_dict, csv_way_nodes, build_way_csv_writer, build_areas_csv_writer):
     """
     Process a chunk of nodes loaded in-memory. Associated then with ways and write lines and polygons to a csv file.
